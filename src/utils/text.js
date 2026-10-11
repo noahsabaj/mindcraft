@@ -1,3 +1,7 @@
+// Where a prompt's $CACHE_BOUNDARY was: the part before it is the same on every request. Models that
+// can cache that part split the prompt there (see Prompter._promptFor); for others it is removed.
+export const CACHE_BOUNDARY = '<<cache-boundary>>';
+
 export function stringifyTurns(turns) {
     let res = '';
     for (let turn of turns) {

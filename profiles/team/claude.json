@@ -1,0 +1,13 @@
+{
+    "name": "Claude",
+    "role": "master",
+    "model": {
+        "api": "claude-code",
+        "model": "claude-opus-5-5",
+        "params": {
+            "effort": "xhigh",
+            "auth": "login"
+        }
+    },
+    "native": true
+}

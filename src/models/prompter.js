@@ -2,7 +2,7 @@ import { readFileSync, mkdirSync, writeFileSync} from 'fs';
 import { Examples } from '../utils/examples.js';
 import { getCommandDocs } from '../agent/commands/index.js';
 import { SkillLibrary } from "../agent/library/skill_library.js";
-import { stringifyTurns } from '../utils/text.js';
+import { stringifyTurns, CACHE_BOUNDARY } from '../utils/text.js';
 import { getCommand } from '../agent/commands/index.js';
 import settings from '../agent/settings.js';
 import { promises as fs } from 'fs';
@@ -56,42 +56,19 @@ export class Prompter {
         if (this.profile.max_tokens)
             max_tokens = this.profile.max_tokens;
 
-        let chat_model_profile = selectAPI(this.profile.model);
-        this.chat_model = createModel(chat_model_profile);
-
-        if (this.profile.code_model) {
-            let code_model_profile = selectAPI(this.profile.code_model);
-            this.code_model = createModel(code_model_profile);
-        }
-        else {
-            this.code_model = this.chat_model;
-        }
-
-        if (this.profile.vision_model) {
-            let vision_model_profile = selectAPI(this.profile.vision_model);
-            this.vision_model = createModel(vision_model_profile);
-        }
-        else {
-            this.vision_model = this.chat_model;
-        }
-
-        
-        let embedding_model_profile = null;
+        // which API each model uses; initModels makes the models
+        this.chat_model_profile = selectAPI(this.profile.model);
+        this.code_model_profile = this.profile.code_model ? selectAPI(this.profile.code_model) : null;
+        this.vision_model_profile = this.profile.vision_model ? selectAPI(this.profile.vision_model) : null;
+        this.embedding_model_profile = null;
         if (this.profile.embedding) {
             try {
-                embedding_model_profile = selectAPI(this.profile.embedding);
+                this.embedding_model_profile = selectAPI(this.profile.embedding);
             } catch (e) {
-                embedding_model_profile = null;
+                this.embedding_model_profile = null;
             }
         }
-        if (embedding_model_profile) {
-            this.embedding_model = createModel(embedding_model_profile);
-        }
-        else {
-            this.embedding_model = createModel({api: chat_model_profile.api});
-        }
 
-        this.skill_libary = new SkillLibrary(agent, this.embedding_model);
         mkdirSync(`./bots/${name}`, { recursive: true });
         writeFileSync(`./bots/${name}/last_profile.json`, JSON.stringify(this.profile, null, 4), (err) => {
             if (err) {
@@ -99,6 +76,15 @@ export class Prompter {
             }
             console.log("Copy profile saved.");
         });
+    }
+
+    // Imports only the model code this profile uses.
+    async initModels() {
+        this.chat_model = await createModel(this.chat_model_profile);
+        this.code_model = this.code_model_profile ? await createModel(this.code_model_profile) : this.chat_model;
+        this.vision_model = this.vision_model_profile ? await createModel(this.vision_model_profile) : this.chat_model;
+        this.embedding_model = await createModel(this.embedding_model_profile ?? {api: this.chat_model_profile.api});
+        this.skill_libary = new SkillLibrary(this.agent, this.embedding_model);
     }
 
     getName() {
@@ -136,6 +122,7 @@ export class Prompter {
 
     async replaceStrings(prompt, messages, examples=null, to_summarize=[], last_goals=null) {
         prompt = prompt.replaceAll('$NAME', this.agent.name);
+        prompt = prompt.replaceAll('$CACHE_BOUNDARY', CACHE_BOUNDARY);
 
         if (prompt.includes('$STATS')) {
             let stats = await getCommand('!stats').perform(this.agent) + '\n';
@@ -203,6 +190,11 @@ export class Prompter {
         return prompt;
     }
 
+    // the boundary stays for models that cache the prompt's static part, and goes for the rest
+    _promptFor(model, prompt) {
+        return model.supportsCacheBoundary ? prompt : prompt.replaceAll(CACHE_BOUNDARY, '');
+    }
+
     async checkCooldown() {
         let elapsed = Date.now() - this.last_prompt_time;
         if (elapsed < this.cooldown && this.cooldown > 0) {
@@ -226,7 +218,7 @@ export class Prompter {
             let generation;
 
             try {
-                generation = await this.chat_model.sendRequest(messages, prompt);
+                generation = await this.chat_model.sendRequest(messages, this._promptFor(this.chat_model, prompt));
                 if (typeof generation !== 'string') {
                     console.error('Error: Generated response is not a string', generation);
                     throw new Error('Generated response is not a string');
@@ -271,7 +263,7 @@ export class Prompter {
         let prompt = this.profile.coding;
         prompt = await this.replaceStrings(prompt, messages, this.coding_examples);
 
-        let resp = await this.code_model.sendRequest(messages, prompt);
+        let resp = await this.code_model.sendRequest(messages, this._promptFor(this.code_model, prompt));
         this.awaiting_coding = false;
         await this._saveLog(prompt, messages, resp, 'coding');
         return resp;
@@ -281,7 +273,7 @@ export class Prompter {
         await this.checkCooldown();
         let prompt = this.profile.saving_memory;
         prompt = await this.replaceStrings(prompt, null, null, to_summarize);
-        let resp = await this.chat_model.sendRequest([], prompt);
+        let resp = await this.chat_model.sendRequest([], this._promptFor(this.chat_model, prompt));
         await this._saveLog(prompt, to_summarize, resp, 'memSaving');
         if (resp?.includes('</think>')) {
             const [_, afterThink] = resp.split('</think>')
@@ -296,7 +288,7 @@ export class Prompter {
         let messages = this.agent.history.getHistory();
         messages.push({role: 'user', content: new_message});
         prompt = await this.replaceStrings(prompt, null, null, messages);
-        let res = await this.chat_model.sendRequest([], prompt);
+        let res = await this.chat_model.sendRequest([], this._promptFor(this.chat_model, prompt));
         return res.trim().toLowerCase() === 'respond';
     }
 
@@ -304,7 +296,7 @@ export class Prompter {
         await this.checkCooldown();
         let prompt = this.profile.image_analysis;
         prompt = await this.replaceStrings(prompt, messages, null, null, null);
-        return await this.vision_model.sendVisionRequest(messages, prompt, imageBuffer);
+        return await this.vision_model.sendVisionRequest(messages, this._promptFor(this.vision_model, prompt), imageBuffer);
     }
 
     async promptGoalSetting(messages, last_goals) {
@@ -317,7 +309,7 @@ export class Prompter {
         user_message = await this.replaceStrings(user_message, messages, null, null, last_goals);
         let user_messages = [{role: 'user', content: user_message}];
 
-        let res = await this.chat_model.sendRequest(user_messages, system_message);
+        let res = await this.chat_model.sendRequest(user_messages, this._promptFor(this.chat_model, system_message));
 
         let goal = null;
         try {

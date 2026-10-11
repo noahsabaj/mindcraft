@@ -43,7 +43,9 @@ export function getFullState(agent) {
     // Richer activity than a bare "Idle": a bot counts as idle (no action executing) even while
     // chatting, deciding its next move, or stopped. Surface those so the dashboard is meaningful.
     let activity;
-    if (!agent.isIdle()) {
+    if (agent.brain && agent.isIdle()) {
+        activity = agent.brain.busy ? { current: 'Thinking', kind: 'thinking' } : { current: 'Idle', kind: 'idle' };
+    } else if (!agent.isIdle()) {
         activity = { current: agent.actions.currentActionLabel || 'Acting', kind: 'acting' };
     } else if (convoManager.inConversation()) {
         const who = convoManager.activeConversation?.name;

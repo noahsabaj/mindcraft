@@ -1,0 +1,46 @@
+diff --git a/node_modules/mineflayer/lib/plugins/digging.js b/node_modules/mineflayer/lib/plugins/digging.js
+index 5ae5552..64be3fe 100644
+--- a/node_modules/mineflayer/lib/plugins/digging.js
++++ b/node_modules/mineflayer/lib/plugins/digging.js
+@@ -244,6 +244,10 @@ function inject (bot) {
+       enchantments = enchantments.concat(helmetEnchantments)
+     }
+ 
++    // minecraft-data's tool-speed table for this material is wrong; dig it like any pickaxe block
++    if (block.material === 'incorrect_for_wooden_tool')
++      block.material = 'mineable/pickaxe'
++
+     const creative = bot.game.gameMode === 'creative'
+     return block.digTime(
+       type,
+diff --git a/node_modules/mineflayer/lib/plugins/physics.js b/node_modules/mineflayer/lib/plugins/physics.js
+index bd36f96..24acb44 100644
+--- a/node_modules/mineflayer/lib/plugins/physics.js
++++ b/node_modules/mineflayer/lib/plugins/physics.js
+@@ -7,6 +7,15 @@ const { createDoneTask, createTask } = require('../promise_utils')
+ 
+ const { Physics, PlayerState } = require('prismarine-physics')
+ 
++function entityActionIsMapped (bot) {
++  if (bot._entityActionIsMapped === undefined) {
++    const type = require('minecraft-data')(bot.version).protocol?.play?.toServer?.types?.packet_entity_action?.[1]
++      ?.find(field => field.name === 'actionId')?.type
++    bot._entityActionIsMapped = Array.isArray(type) && type[0] === 'mapper'
++  }
++  return bot._entityActionIsMapped
++}
++
+ module.exports = inject
+ 
+ const PI = Math.PI
+@@ -254,7 +263,9 @@ function inject (bot, { physicsEnabled, maxCatchupTicks }) {
+     } else if (control === 'sprint') {
+       bot._client.write('entity_action', {
+         entityId: bot.entity.id,
+-        actionId: bot.supportFeature('entityActionUsesStringMapper')
++        // the action ids moved in 1.21.6 (sneaking left this packet), where 3 means start_riding_jump;
++        // where the protocol maps names to ids, send the name
++        actionId: (bot.supportFeature('entityActionUsesStringMapper') || entityActionIsMapped(bot))
+           ? (state ? 'start_sprinting' : 'stop_sprinting')
+           : (state ? 3 : 4),
+         jumpBoost: 0

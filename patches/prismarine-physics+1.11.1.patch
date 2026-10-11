@@ -1,0 +1,17 @@
+diff --git a/node_modules/prismarine-physics/index.js b/node_modules/prismarine-physics/index.js
+index d95ce7f..5c07f9c 100644
+--- a/node_modules/prismarine-physics/index.js
++++ b/node_modules/prismarine-physics/index.js
+@@ -73,8 +73,10 @@ function Physics (mcData, world) {
+     honeyblockJumpSpeed: 0.4,
+     ladderMaxSpeed: 0.15,
+     ladderClimbSpeed: 0.2,
+-    playerHalfWidth: 0.3,
+-    playerHeight: 1.8,
++    // the server sizes players with floats (0.6f x 1.8f); with exact 0.3 the bot ends up 1e-8 inside
++    // any wall it walks into, which newer servers (Paper 26.1) refuse as clipping into the block
++    playerHalfWidth: Math.fround(0.6) / 2,
++    playerHeight: Math.fround(1.8),
+     waterInertia: 0.8,
+     lavaInertia: 0.5,
+     liquidAcceleration: 0.02,

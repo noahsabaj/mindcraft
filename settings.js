@@ -1,16 +1,17 @@
 const settings = {
     "minecraft_version": "auto", // or specific version like "1.21.6"
     "host": "127.0.0.1", // or "localhost", "your.ip.address.here"
-    "port": 55916, // set to -1 to automatically scan for open ports
+    "port": 25565, // the local server from `npm run server`; 55916 for an open-to-LAN world, -1 to scan for open ports
     "auth": "offline", // or "microsoft"
 
     // the mindserver manages all agents and hosts the UI
-    "mindserver_port": 8080,
+    "mindserver_port": 8765, // web UI at http://localhost:8765 (8080 is often taken, e.g. by llama.cpp)
     "auto_open_ui": true, // opens UI in browser on startup
     
     "base_profile": "assistant", // survival, assistant, creative, or god_mode
     "profiles": [
-        "./andy.json",
+        "./profiles/claude_code.json", // Claude through Claude Code, with your Claude login
+        // "./andy.json",
         // "./profiles/gpt.json",
         // "./profiles/claude.json",
         // "./profiles/gemini.json",

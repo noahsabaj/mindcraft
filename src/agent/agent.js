@@ -17,6 +17,7 @@ import settings from './settings.js';
 import { Task } from './tasks/tasks.js';
 import { speak } from './speak.js';
 import { log, validateNameFormat, handleDisconnection } from './connection_handler.js';
+import { ClaudeBrain } from './brain/brain.js';
 
 export class Agent {
     async start(load_mem=false, init_message=null, count_id=0) {
@@ -27,6 +28,7 @@ export class Agent {
         // Initialize components
         this.actions = new ActionManager(this);
         this.prompter = new Prompter(this, settings.profile);
+        await this.prompter.initModels();
         this.name = (this.prompter.getName() || '').trim();
         console.log(`Initializing agent ${this.name}...`);
         
@@ -39,6 +41,10 @@ export class Agent {
             return;
         }
         
+        // "native": true runs this bot as one long-lived Claude Code session that plays through tools
+        if (this.prompter.profile.native)
+            this.brain = new ClaudeBrain(this, this.prompter.profile);
+
         this.history = new History(this);
         this.coder = new Coder(this);
         this.npc = new NPCContoller(this);
@@ -177,6 +183,28 @@ export class Agent {
             }
         }
 
+        // Set up auto-eat
+        this.bot.autoEat.options = {
+            priority: 'foodPoints',
+            startAt: 14,
+            bannedFood: ["rotten_flesh", "spider_eye", "poisonous_potato", "pufferfish", "chicken"]
+        };
+
+        if (this.brain) {
+            // the brain decides which public chat is for this bot; whispers always are
+            const fromPlayer = (whisper) => (username, message) => {
+                if (!message || username === this.name) return;
+                if (ignore_messages.some((m) => message.startsWith(m))) return;
+                this.shut_up = false;
+                this.brain.onPlayerMessage(username, message, whisper);
+            };
+            this.respondFunc = fromPlayer(true); // messages from the web UI come through this too
+            this.bot.on('whisper', fromPlayer(true));
+            this.bot.on('chat', fromPlayer(false));
+            this.brain.start(init_message, !!save_data);
+            return;
+        }
+
 		this.respondFunc = respondFunc;
 
         this.bot.on('whisper', respondFunc);
@@ -186,13 +214,6 @@ export class Agent {
             // only respond to open chat messages when there are no other agents
             respondFunc(username, message);
         });
-
-        // Set up auto-eat
-        this.bot.autoEat.options = {
-            priority: 'foodPoints',
-            startAt: 14,
-            bannedFood: ["rotten_flesh", "spider_eye", "poisonous_potato", "pufferfish", "chicken"]
-        };
 
         if (save_data?.self_prompt) {
             if (init_message) {
@@ -256,6 +277,11 @@ export class Agent {
         if (!source || !message) {
             console.warn('Received empty message from', source);
             return false;
+        }
+        if (this.brain) {
+            // deaths, interrupted actions, tasks: events for the session
+            this.brain.onSystemMessage(source, message);
+            return true;
         }
 
         let used_command = false;

@@ -1,0 +1,14 @@
+{
+    "name": "Worker2",
+    "role": "worker",
+    "boss": "Foreman1",
+    "model": {
+        "api": "claude-code",
+        "model": "claude-haiku-5-5",
+        "params": {
+            "effort": "high",
+            "auth": "login"
+        }
+    },
+    "native": true
+}

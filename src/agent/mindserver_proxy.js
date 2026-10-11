@@ -44,7 +44,10 @@ class MindServerProxy {
         });
 
         this.socket.on('chat-message', (agentName, json) => {
-            convoManager.receiveFromBot(agentName, json);
+            if (this.agent?.brain)
+                this.agent.brain.onTeamMessage(agentName, json.message);
+            else
+                convoManager.receiveFromBot(agentName, json);
         });
 
         this.socket.on('agents-status', (agents) => {
@@ -128,6 +131,14 @@ export const serverProxy = new MindServerProxy();
 // for chatting with other bots
 export function sendBotChatToServer(agentName, json) {
     serverProxy.getSocket().emit('chat-message', agentName, json);
+}
+
+// every in-game agent's state, by name (null for one that did not answer)
+export function getTeamState() {
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => resolve({}), 5000);
+        serverProxy.getSocket().emit('get-team-state', (states) => { clearTimeout(timer); resolve(states || {}); });
+    });
 }
 
 // for sending general output to server for display

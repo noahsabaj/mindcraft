@@ -197,6 +197,19 @@ export function createMindServer(host_public = false, port = 8080) {
             }
         });
 
+        // every in-game agent's state, for an agent checking on its team
+        socket.on('get-team-state', async (callback) => {
+            const states = {};
+            await Promise.all(Object.entries(agent_connections).map(async ([name, conn]) => {
+                if (!conn.in_game || !conn.socket) return;
+                states[name] = await new Promise((resolve) => {
+                    const timer = setTimeout(() => resolve(null), 3000);
+                    conn.socket.emit('get-full-state', (state) => { clearTimeout(timer); resolve(state); });
+                });
+            }));
+            callback(states);
+        });
+
         socket.on('chat-message', (agentName, json) => {
             if (!agent_connections[agentName]) {
                 console.warn(`Agent ${agentName} tried to send a message but is not logged in`);
@@ -298,7 +311,10 @@ function agentsStatusUpdate(socket) {
             name: agentName, 
             in_game: conn.in_game,
             viewerPort: conn.viewer_port,
-            socket_connected: !!conn.socket
+            socket_connected: !!conn.socket,
+            // the team: master, foreman or worker, and who a foreman or worker reports to
+            role: conn.settings.profile?.role ?? null,
+            boss: conn.settings.profile?.boss ?? null
         });
     };
     socket.emit('agents-status', agents);

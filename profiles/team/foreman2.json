@@ -1,0 +1,14 @@
+{
+    "name": "Foreman2",
+    "role": "foreman",
+    "boss": "Claude",
+    "model": {
+        "api": "claude-code",
+        "model": "claude-opus-5-5",
+        "params": {
+            "effort": "medium",
+            "auth": "login"
+        }
+    },
+    "native": true
+}
