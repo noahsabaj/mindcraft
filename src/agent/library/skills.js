@@ -516,8 +516,8 @@ export async function collectBlock(bot, blockType, num=1, exclude=null) {
                 break;
             }
             else {
+                // no continue: an interrupt makes collect throw, and the check below must still see it
                 log(bot, `Failed to collect ${blockType}: ${err}.`);
-                continue;
             }
         }
         
@@ -1021,49 +1021,44 @@ export async function giveToPlayer(bot, itemType, username, num=1) {
     if (bot.entity.position.y < player.position.y - 1) {
         await goToPlayer(bot, username, 1);
     }
-    // if we are too close, make some distance
-    if (bot.entity.position.distanceTo(player.position) < 2) {
-        let too_close = true;
-        let start_moving_away = Date.now();
-        await moveAwayFromEntity(bot, player, 2);
-        while (too_close && !bot.interrupt_code) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-            too_close = bot.entity.position.distanceTo(player.position) < 5;
-            if (too_close) {
-                await moveAwayFromEntity(bot, player, 5);
-            }
-            if (Date.now() - start_moving_away > 3000) {
-                break;
-            }
-        }
-        if (too_close) {
-            log(bot, `Failed to give ${itemType} to ${username}, too close.`);
-            return false;
+    // A toss carries an item about 3.3 blocks, and a player picks it up within about 1.4 blocks of
+    // where they stand: toss from 2.5 to 4.5 blocks away. Closer, it flies past them; farther, it
+    // falls short (measured on Paper 26.1).
+    const start_moving_away = Date.now();
+    while (bot.entity.position.distanceTo(player.position) < 2.5 && !bot.interrupt_code && Date.now() - start_moving_away < 3000) {
+        try {
+            await moveAwayFromEntity(bot, player, 3);
+        } catch (err) {
+            break; // toss from here then
         }
     }
 
     await bot.lookAt(player.position);
-    if (await discard(bot, itemType, num)) {
-        let given = false;
-        bot.once('playerCollect', (collector, collected) => {
-            console.log(collected.name);
-            if (collector.username === username) {
-                log(bot, `${username} received ${itemType}.`);
-                given = true;
-            }
-        });
-        let start = Date.now();
-        while (!given && !bot.interrupt_code) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-            if (given) {
-                return true;
-            }
-            if (Date.now() - start > 3000) {
-                break;
-            }
+    // Listen before tossing, and to every pickup nearby: with other players and bots around, the
+    // first pickup is often someone else's.
+    let given = false;
+    const onCollect = (collector) => {
+        if (collector?.id === player.id || collector?.username === username) given = true;
+    };
+    bot.on('playerCollect', onCollect);
+    try {
+        if (!await discard(bot, itemType, num)) {
+            log(bot, `Failed to give ${itemType} to ${username}.`);
+            return false;
         }
+        // tossed items can't be picked up for the first 2 seconds
+        const start = Date.now();
+        while (!given && !bot.interrupt_code && Date.now() - start < 5000) {
+            await new Promise(resolve => setTimeout(resolve, 250));
+        }
+    } finally {
+        bot.removeListener('playerCollect', onCollect);
     }
-    log(bot, `Failed to give ${itemType} to ${username}, it was never received.`);
+    if (given) {
+        log(bot, `${username} received ${itemType}.`);
+        return true;
+    }
+    log(bot, `Tossed ${itemType} to ${username}, but they have not picked it up yet: it is on the ground near them.`);
     return false;
 }
 

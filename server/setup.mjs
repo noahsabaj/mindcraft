@@ -8,7 +8,7 @@
 //   npm run server:setup -- --accept-eula    (read https://aka.ms/MinecraftEULA first)
 //   npm run server
 
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'fs';
 import path from 'path';
 import { spawn, spawnSync } from 'child_process';
@@ -26,7 +26,8 @@ const JDK_DIR = path.join(RUN_DIR, 'jdk');
 const PLUGINS_DIR = path.join(RUN_DIR, 'plugins');
 const UA = { 'User-Agent': 'mindcraft-server-setup (https://github.com/noahsabaj/mindcraft)' };
 
-// Our settings for server.properties; anything else keeps Paper's default.
+// Our settings for server.properties; anything else keeps Paper's default. A function gets the
+// current value and returns the new one.
 const SERVER_PROPERTIES = {
     'server-ip': '127.0.0.1',        // this PC only
     'server-port': '25565',
@@ -35,6 +36,11 @@ const SERVER_PROPERTIES = {
     'spawn-protection': '0',         // otherwise only ops can build near spawn
     'allow-flight': 'true',          // bots' jumps and climbs would get them kicked for flying
     'motd': 'Mindcraft',
+    // a console for scripts (npm run server:cmd); it listens where the server does, on this PC only
+    'enable-rcon': 'true',
+    'rcon.port': '25575',
+    'rcon.password': current => current || randomBytes(18).toString('base64url'),
+    'broadcast-rcon-to-ops': 'false',
 };
 
 export function javaPath() {
@@ -140,18 +146,20 @@ async function setUpViaVersion() {
     await download(file.downloadUrl, path.join(PLUGINS_DIR, 'ViaVersion.jar'), file.fileInfo.sha256Hash, `ViaVersion ${version.name}`);
 }
 
-function writeServerProperties() {
+export function writeServerProperties() {
     const fp = path.join(RUN_DIR, 'server.properties');
     const lines = existsSync(fp) ? readFileSync(fp, 'utf8').split(/\r?\n/) : [];
     const todo = new Map(Object.entries(SERVER_PROPERTIES));
-    const out = lines.map(line => {
-        const key = line.split('=')[0];
-        if (!todo.has(key)) return line;
+    const take = (key, current) => {
         const value = todo.get(key);
         todo.delete(key);
-        return `${key}=${value}`;
+        return `${key}=${typeof value === 'function' ? value(current) : value}`;
+    };
+    const out = lines.map(line => {
+        const key = line.split('=')[0];
+        return todo.has(key) ? take(key, line.slice(key.length + 1)) : line;
     }).filter((line, i, all) => line || i < all.length - 1);
-    for (const [key, value] of todo) out.push(`${key}=${value}`);
+    for (const key of [...todo.keys()]) out.push(take(key, ''));
     writeFileSync(fp, out.join('\n') + '\n');
 }
 

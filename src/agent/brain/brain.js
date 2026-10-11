@@ -80,14 +80,14 @@ export class ClaudeBrain {
         this.post(`[event] ${message}`, true);
     }
 
-    // Public chat is for this bot when it names it, calls on everyone, or nobody is named and
-    // this bot is the one players talk to first (the master, or any bot when there is none).
+    // Public chat is for the bots it names, and only them ("Claude, can your team..." is for Claude).
+    // Naming none, it is for everyone when it calls on everyone, else for the bot players talk to
+    // first (the master, or any bot when there is none).
     _isForMe(message) {
         const roster = this.roster();
         const named = roster.filter(m => new RegExp(`\\b${escapeRegExp(m.name)}\\b`, 'i').test(message));
-        if (named.some(m => m.name === this.name)) return true;
+        if (named.length > 0) return named.some(m => m.name === this.name);
         if (/\b(everyone|everybody|all of you|team|y'?all|guys)\b/i.test(message)) return true;
-        if (named.length > 0) return false;
         const master = roster.find(m => m.role === 'master');
         return master ? master.name === this.name : true;
     }
@@ -138,28 +138,42 @@ export class ClaudeBrain {
 
     // Runs a Mindcraft action for a tool: waits for it up to ACTION_WAIT_MS, or until a message
     // the bot should see arrives; after that it keeps going, and its end comes as an [event].
-    act(label, run) {
+    // The same call (same `call` key) while it still runs waits on it again instead of starting
+    // it over: models repeat a call to keep waiting, and a restart loses the progress.
+    act(label, run, call = null) {
         const result = this.toolChain.then(async () => {
-            const seq = ++this.actionSeq;
+            let job = this.job;
+            if (!call || !job || job.ended || job.call !== call) {
+                job = this.job = { call, seq: ++this.actionSeq, ended: false, told: false, watched: false };
+                job.done = run().then(res => ({ res }), err => ({ res: `Error: ${err?.message || err}` }));
+                job.done.then(() => { job.ended = true; });
+            }
             const urgent = this.urgent.promise;
-            const done = run().then(res => ({ res }), err => ({ res: `Error: ${err?.message || err}` }));
             let timer;
             const outcome = await Promise.race([
-                done.then(r => ({ finished: true, ...r })),
+                job.done.then(r => ({ finished: true, ...r })),
                 new Promise(r => { timer = setTimeout(() => r({ why: 'time' }), ACTION_WAIT_MS); }),
                 urgent.then(() => ({ why: 'message' })),
             ]);
             clearTimeout(timer);
             const behavior = this._behaviorLog();
             const note = behavior ? `\nMeanwhile, on your own: ${behavior}` : '';
-            if (outcome.finished) return describe(label, outcome.res) + note;
-            done.then(({ res }) => {
-                if (this.actionSeq === seq) // not replaced by a newer action
-                    this.post(`[event] ${label} ended: ${describe(label, res)}`);
-            });
+            if (outcome.finished) {
+                job.told = true;
+                return describe(label, outcome.res) + note;
+            }
+            if (!job.watched) {
+                job.watched = true;
+                // after the microtasks, so a call that waits on it again tells the result instead
+                job.done.then(({ res }) => setImmediate(() => {
+                    if (!job.told && this.actionSeq === job.seq) // not replaced by a newer action
+                        this.post(`[event] ${label} ended: ${describe(label, res)}`);
+                    job.told = true;
+                }));
+            }
             return (outcome.why === 'message'
                 ? `${label} is still running. A new message just came in, read it. The action keeps going unless you start another one or call stop.`
-                : `${label} is still running after ${ACTION_WAIT_MS / 1000}s. You will get an [event] when it ends; starting another action or stop cancels it.`) + note;
+                : `${label} is still running after ${ACTION_WAIT_MS / 1000}s. You will get an [event] when it ends; the same call again waits on it, another action or stop cancels it.`) + note;
         });
         this.toolChain = result.catch(() => {});
         return result;

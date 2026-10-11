@@ -256,6 +256,9 @@ export class Agent {
         this.bot.stopDigging();
         this.bot.collectBlock.cancelTask();
         this.bot.pathfinder.stop();
+        // stop() waits for the bot to reach its next path node, which a stuck bot never does;
+        // dropping the goal ends the path (and fails any goto) right away
+        this.bot.pathfinder.setGoal(null);
         this.bot.pvp.stop();
     }
 

@@ -1,0 +1,15 @@
+diff --git a/node_modules/mineflayer-collectblock/lib/CollectBlock.js b/node_modules/mineflayer-collectblock/lib/CollectBlock.js
+index 445df38..6c7bc50 100644
+--- a/node_modules/mineflayer-collectblock/lib/CollectBlock.js
++++ b/node_modules/mineflayer-collectblock/lib/CollectBlock.js
+@@ -47,7 +47,9 @@ function collectAll(bot, options) {
+                         });
+                     });
+                     yield bot.pathfinder.goto(new mineflayer_pathfinder_1.goals.GoalFollow(closest, 0));
+-                    yield waitForPickup;
++                    // an item it can't pick up must not hold up the task, and cancelTask, forever
++                    yield Promise.race([waitForPickup, new Promise(resolve => setTimeout(resolve, 5000))]);
++                    tempEvents.cleanup();
+                     break;
+                 }
+                 default: {

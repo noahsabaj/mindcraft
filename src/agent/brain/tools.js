@@ -54,7 +54,7 @@ export function makeTools(brain) {
         tools.push(tool(name, command.description, shape, async (args) => {
             const line = commandLine(command, args);
             if (!isAction) return text(await executeCommand(agent, line));
-            return text(await brain.act(name, () => executeCommand(agent, line)));
+            return text(await brain.act(name, () => executeCommand(agent, line), line));
         }));
     }
 

@@ -1,9 +1,10 @@
 // Starts the local server that `npm run server:setup` made. Server commands (op <name>, stop, ...)
-// can be typed right here. SERVER_MEMORY sets the heap (default 4G).
+// can be typed right here, or sent from another terminal: npm run server:cmd -- time set day
+// SERVER_MEMORY sets the heap (default 4G).
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import path from 'path';
-import { RUN_DIR, configureGeyser, javaPath } from './setup.mjs';
+import { RUN_DIR, configureGeyser, javaPath, writeServerProperties } from './setup.mjs';
 
 // Paper's recommended JVM flags
 const FLAGS = ['-XX:+AlwaysPreTouch', '-XX:+DisableExplicitGC', '-XX:+ParallelRefProcEnabled', '-XX:+PerfDisableSharedMem',
@@ -17,6 +18,7 @@ if (!java || !existsSync(path.join(RUN_DIR, 'paper.jar'))) {
     console.error('No server yet. Set one up first: npm run server:setup -- --accept-eula');
     process.exit(1);
 }
+writeServerProperties(); // also on servers set up before a setting was added
 configureGeyser();
 const memory = process.env.SERVER_MEMORY || '4G';
 const server = spawn(java, [`-Xms${memory}`, `-Xmx${memory}`, ...FLAGS, '-jar', 'paper.jar', '--nogui'], { cwd: RUN_DIR, stdio: 'inherit' });

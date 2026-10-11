@@ -10,7 +10,15 @@ const settings = {
     
     "base_profile": "assistant", // survival, assistant, creative, or god_mode
     "profiles": [
-        "./profiles/claude_code.json", // Claude through Claude Code, with your Claude login
+        // "./profiles/claude_code.json", // one Claude, through Claude Code with your Claude login
+        // a team: a lead (Opus), two foremen (Opus) and four workers (Haiku), through Claude Code
+        "./profiles/team/claude.json",
+        "./profiles/team/foreman1.json",
+        "./profiles/team/foreman2.json",
+        "./profiles/team/worker1.json",
+        "./profiles/team/worker2.json",
+        "./profiles/team/worker3.json",
+        "./profiles/team/worker4.json",
         // "./andy.json",
         // "./profiles/gpt.json",
         // "./profiles/claude.json",
@@ -28,7 +36,7 @@ const settings = {
     ],
 
     "load_memory": false, // load memory from previous session
-    "init_message": "Respond with hello world and your name", // sends to all on spawn
+    "init_message": "Say a quick hi in chat, unless you have a boss on your team: then wait quietly for their instructions.", // sends to all on spawn
     "only_chat_with": [], // users that the bots listen to and send general messages to. if empty it will chat publicly
 
     "speak": false,
@@ -51,7 +59,7 @@ const settings = {
     "num_examples": 2, // number of examples to give to the model
     "max_commands": -1, // max number of commands that can be used in consecutive responses. -1 for no limit
     "show_command_syntax": "full", // "full", "shortened", or "none"
-    "narrate_behavior": true, // chat simple automatic actions ('Picking up item!')
+    "narrate_behavior": false, // chat simple automatic actions ('Picking up item!'); with a team it floods the chat
     "chat_bot_messages": true, // publicly chat messages to other bots
 
     "spawn_timeout": 30, // num seconds allowed for the bot to spawn before throwing error. Increase when spawning takes a while.
